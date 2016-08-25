@@ -38,16 +38,13 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 
 	fds[0].fd = sockfd;
 	fds[0].events = POLLIN | POLLERR;
-	while(1)
-	{
+	while(1) {
 		pollret = poll(fds, 1, TIMEOUT*1000);
 		if( pollret > 0 ){//success
-			logi("%s:success\n", __func__);
-		}
-		else if(pollret == 0){ //timeout
+			//logi("%s:success\n", __func__);
+		} else if(pollret == 0){ //timeout
 			logi("%s:time out\n", __func__);
-		}
-		else {
+		} else {
 			loge("%s:%s\n", __func__, strerror(errno));
 			return -1;
 		}
@@ -67,32 +64,32 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 		}		
 		
 		switch (ntohs(buf.opcode)) {
-		case DATA://收到期望的数据块
-			if (ntohs(buf.be.block) < next) {
-				send_ack(sockfd, &sender, ntohs(buf.be.block));
-				continue;
-			} else if (ntohs(buf.be.block) == next) {
-				send_ack(sockfd, &sender, next);  //发送确认
-				int written = write(fd, buf.data, ret - 4);      //写入磁盘
-				total += written;
-				logi("data=%d, written=%d, next=%d\n", (ret - 4), written, next);
-				next++;
-				if (ret - 4 < plsize){   //传输完成
-					logi("Transfer over! total=%d\n", total);
-					return 0;
+			case DATA://收到期望的数据块
+				if (ntohs(buf.be.block) < next) {
+					send_ack(sockfd, &sender, ntohs(buf.be.block));
+					continue;
+				} else if (ntohs(buf.be.block) == next) {
+					send_ack(sockfd, &sender, next);  //发送确认
+					int written = write(fd, buf.data, ret - 4);      //写入磁盘
+					total += written;
+					logi("data=%d, written=%d, next=%d\n", (ret - 4), written, next);
+					next++;
+					if (ret - 4 < plsize){   //传输完成
+						logi("Transfer over! total=%d\n", total);
+						return 0;
+					}
 				}
-			}
-			break;
-		case ERROR://收到错误信息
-			loge("%s:ERROR code %d: %s\n", __func__, ntohs(buf.be.error), buf.data);
-			return -1;
-		case OACK:
-			logi("OACK");
-			send_ack(sockfd, &sender, 0);
-			break;
-		default:
-			logw("ntohs(buf.opcode)=%d\n", ntohs(buf.opcode));
-			break;
+				break;
+			case ERROR://收到错误信息
+				loge("%s:ERROR code %d: %s\n", __func__, ntohs(buf.be.error), buf.data);
+				return -1;
+			case OACK:
+				logi("OACK");
+				send_ack(sockfd, &sender, 0);
+				break;
+			default:
+				logw("ntohs(buf.opcode)=%d\n", ntohs(buf.opcode));
+				break;
 		}
 	}
 
@@ -120,14 +117,13 @@ int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize){
 		for( i=1; i<=5; i++) {
 			sendto(sockfd, &buf, 4+ret, 0, (SAP)peer, sizeof(*peer)); //发出数据块
 
-			if( poll(fds,1,TIMEOUT*1000) > 0 && fds[0].revents & POLLIN) {
+			if( poll(fds,1,TIMEOUT*1000) > 0 &&( fds[0].revents & POLLIN)) {
 				addrlen = sizeof(sender);
 				recvfrom(sockfd, &ack, sizeof(ack),0,(SAP)&sender,&addrlen); //接收块确认
 
 				if( 0 == addrcmp(peer, &sender) ) {
-					logi("%s: ack code=%d, block=%d, next=%d\n", __func__, ntohs(ack.opcode), ntohs(ack.be.block), next);
+					//logi("%s: ack code=%d, block=%d, next=%d\n", __func__, ntohs(ack.opcode), ntohs(ack.be.block), next);
 					if( ACK == ntohs(ack.opcode) && next == ntohs(ack.be.block) ){
-						logi("ACK code=%d\n", ntohs(ack.opcode));
 						break;       //收到块确认
 					}
 
@@ -140,7 +136,7 @@ int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize){
 
 			if( 5 == i ) {
 				loge("%s:send file time out. i=%d\n",__func__, i);
-				return -1;
+				return -2;
 			}
 		}
 

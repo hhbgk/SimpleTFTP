@@ -22,9 +22,9 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         mGetEdit = (EditText) findViewById(R.id.get_file_ed);
-        mGetEdit.setText("test.txt");
+        mGetEdit.setText("rec00001.avi");
         mPutEdit = (EditText) findViewById(R.id.put_file_ed);
-        mPutEdit.setText("test.txt");
+        mPutEdit.setText("rec00001.avi");
 
         mGetBtn = (Button) findViewById(R.id.get_file_bt);
         mPutBtn = (Button) findViewById(R.id.put_file_bt);
