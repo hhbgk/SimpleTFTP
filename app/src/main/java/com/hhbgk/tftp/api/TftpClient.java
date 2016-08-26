@@ -19,6 +19,7 @@ public class TftpClient {
     private native boolean _destroy();
 
     private static final int MAIN_MSG_TFTP_ERROR = 1;
+    private static final int MAIN_MSG_TFTP_TRANSFER_COMPLETE = 2;
     private final Handler mMainThreadHandler = new Handler(Looper.getMainLooper(), new Handler.Callback() {
         @Override
         public boolean handleMessage(Message msg) {
@@ -26,6 +27,22 @@ public class TftpClient {
                 case MAIN_MSG_TFTP_ERROR:
                     if (mOnTftpClientListener != null){
                         mOnTftpClientListener.onError((String) msg.obj);
+                    }
+                    break;
+                case MAIN_MSG_TFTP_TRANSFER_COMPLETE:
+                    switch (msg.arg1){
+                        case TFTP_OP_GET:
+                            Log.i(tag, "Get over");
+                            if (mOnFileCompleteListener != null){
+                                mOnFileCompleteListener.onDownload();
+                            }
+                            break;
+                        case TFTP_OP_PUT:
+                            Log.i(tag, "Put over");
+                            if (mOnFileCompleteListener != null){
+                                mOnFileCompleteListener.onUpload();
+                            }
+                            break;
                     }
                     break;
             }
@@ -44,6 +61,16 @@ public class TftpClient {
         mMainThreadHandler.sendMessage(message);
     }
 
+    /**
+     * Call from native after file get/put completely
+     */
+    private void onComplete(int type){
+        Message message = Message.obtain();
+        message.what = MAIN_MSG_TFTP_TRANSFER_COMPLETE;
+        message.arg1 = type;
+        mMainThreadHandler.sendMessage(message);
+    }
+
     public TftpClient(String ip){
         nativeInit(ip);
     }
@@ -56,6 +83,17 @@ public class TftpClient {
     public void setOnTftpClientListener(OnTftpClientListener listener){
         mOnTftpClientListener = listener;
     }
+
+    public interface OnFileCompleteListener{
+        void onDownload();
+        void onUpload();
+    }
+    private OnFileCompleteListener mOnFileCompleteListener;
+
+    public void setOnFileCompleteListener(OnFileCompleteListener listener){
+        mOnFileCompleteListener = listener;
+    }
+
     public boolean download(String remoteFilePath, String localFilePath){
         return _request(TFTP_OP_GET, remoteFilePath, localFilePath);
     }

@@ -25,7 +25,7 @@ int send_ack( int sockfd, struct sockaddr_in * dst, int blknum ){
 	return 0; 
 }
 
-int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) {
+int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize, transfer_cb callback) {
 	logd("%s", __func__);
 	int ret, pollret;
 	int next = 1;  //下一个应接收的块编号
@@ -81,6 +81,9 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 					next++;
 					if (ret - 4 < plsize){   //传输完成
 						logi("Transfer over!");
+						if(callback != NULL){
+							callback(TFTP_OP_GET);
+						}
 						return 0;
 					}
 				}
@@ -101,7 +104,7 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 	return 0;
 }//end of recv_file
 
-int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize){
+int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize, transfer_cb callback){
 	logd("%s", __func__);
 	int next = 1;  //下一个应发送的块编号
 	int i, ret;
@@ -149,6 +152,9 @@ int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize){
 
 		if( ret < plsize ){   //传输完成
 			logi("%s: put file over!\n", __func__);
+			if(callback != NULL){
+				callback(TFTP_OP_PUT);
+			}
 			return 0;
 		}
 	}

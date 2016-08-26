@@ -104,15 +104,15 @@ typedef struct
 /* new error code */
 #define EOPTNEG 8               /* error in option negociation */
 
+typedef void (*transfer_cb)(int type);
+
 int send_ack( int sockfd, struct sockaddr_in * dst, int blknum );
 
 int addrcmp(const struct sockaddr_in * sa1, const struct sockaddr_in * sa2);
 
-int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int blksize);
+int send_file( int sockfd, int fd, struct sockaddr_in * peer, const int blksize, transfer_cb cb);
 
-int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int blksize);
-
-
+int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int blksize, transfer_cb cb);
 
 #endif
 

@@ -14,6 +14,17 @@ static jobject g_obj = NULL;
 
 static client_t client;
 static jmethodID on_error_method_id;
+static jmethodID on_transfer_method_id;
+
+static void on_file_transfer_complete(int type){
+	logd("%s:%d", __func__, type);
+	JNIEnv *env = NULL;
+
+	(*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
+	assert(env != NULL);
+	(*env)->CallVoidMethod(env, g_obj, on_transfer_method_id, (jint)type);
+	(*g_jvm)->DetachCurrentThread(g_jvm);
+}
 
 static void error_message_handler(const char *msg){
 	logd("%s:%s", __func__, msg);
@@ -24,7 +35,6 @@ static void error_message_handler(const char *msg){
 
 	jstring jmsg = (*env)->NewStringUTF(env, msg);
 	(*env)->CallVoidMethod(env, g_obj, on_error_method_id, jmsg);
-	(*env)->ReleaseStringUTFChars(env, jmsg, msg);
 	(*g_jvm)->DetachCurrentThread(g_jvm);
 }
 /*
@@ -128,7 +138,7 @@ void *tftp_request_runnable(void *arg){
 			goto ERROR_OUT;
 		}
 
-		ret = recv_file(sockfd, fd, &server, req.pl_size); //接收文件
+		ret = recv_file(sockfd, fd, &server, req.pl_size, on_file_transfer_complete); //接收文件
 		if( 0 != ret ) {
 			error_message_handler("Receive request timeout");
 			goto ERROR_OUT;
@@ -163,7 +173,7 @@ void *tftp_request_runnable(void *arg){
 				goto ERROR_OUT;
 			}
 		}
-		ret = send_file(sockfd, fd, &sender, req.pl_size);
+		ret = send_file(sockfd, fd, &sender, req.pl_size, on_file_transfer_complete);
 		if( 0 != ret ){
 			loge("%s: send_file =%d\n",__func__, ret);
 			error_message_handler("Send file timeout");
@@ -241,7 +251,8 @@ static void jni_native_init(JNIEnv *env, jobject thiz, jstring ip){
     	(*env)->ThrowNew(env, "java/lang/NullPointerException", "Unable to find exception class");
     }
     on_error_method_id = (*env)->GetMethodID(env, clazz, "onError", "(Ljava/lang/String;)V");
-    if(!on_error_method_id){
+    on_transfer_method_id = (*env)->GetMethodID(env, clazz, "onComplete", "(I)V");
+    if(!on_error_method_id || !on_transfer_method_id){
     	loge("The calling class does not implement all necessary interface methods");
     }
 }
