@@ -76,8 +76,9 @@ static int send_request( int sockfd,  struct sockaddr_in * dst, client_t * req, 
 	return 0;
 }
 
-static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring remote_file_path, jstring local_file_path){
+void *tftp_request_runnable(void *arg){
 	logd("%s", __func__);
+	req_pkg_t *req_pkg = (req_pkg_t *)arg;
 	int i,ret;
 	int fd,sockfd;
 	client_t req;//用于发送读写请求
@@ -87,9 +88,9 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 	struct sockaddr_in sender = {0};
 	int addrlen = sizeof(sender);
 
-	const char *c_remote_path = (*env)->GetStringUTFChars(env, remote_file_path, NULL);
-	const char *c_local_path = (*env)->GetStringUTFChars(env, local_file_path, NULL);
-	logi("ip=%s, op=%d, c_remote_path=%s, c_local_path=%s", client.dst_ip, op, c_remote_path, c_local_path);
+	logi("ip=%s, op=%d, c_remote_path=%s, c_local_path=%s", client.dst_ip, req_pkg->op, req_pkg->remote, req_pkg->local);
+	// Detach ourself. That way the main thread does not have to wait for us with pthread_join.
+	pthread_detach(pthread_self());
 
 	//设置服务器地址
 	server.sin_family = AF_INET;
@@ -97,25 +98,25 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 	server.sin_addr.s_addr = inet_addr(client.dst_ip);
 	if( INADDR_NONE == server.sin_addr.s_addr) {
 		error_message_handler("IP addr invalid");
-		return JNI_FALSE;
+		return NULL;
 	}
 	//创建套接字
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if( sockfd < 0 ) {
 		loge("%s:%s",__func__, strerror("socket"));
 		error_message_handler("Create socket fail");
-		return JNI_FALSE;
+		return NULL;
 	}
 
-	if( TFTP_OP_GET == op ){  //下载文件，覆盖现有文件
-		fd = open(c_local_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if( TFTP_OP_GET == req_pkg->op ){  //下载文件，覆盖现有文件
+		fd = open(req_pkg->local, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 		if( fd < 0 ) {
 			loge("%s:%s",__func__, strerror("open"));
 			error_message_handler("Open fail");
 			goto ERROR_OUT;
 		}
 		req.pl_size = OP_GET_BLKSIZE;
-		reqlen = fill_request( &req, RRQ, c_remote_path, "octet" );
+		reqlen = fill_request( &req, RRQ, req_pkg->remote, "octet" );
 
 		ret = send_request(sockfd, &server, &req, reqlen); //发送请求
 		if( ret < 0 ){
@@ -125,12 +126,12 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 
 		ret = recv_file(sockfd, fd, &server, req.pl_size); //接收文件
 		if( 0 != ret ) {
-			//error_message_handler("Send request timeout");
+			error_message_handler("Receive request timeout");
 			goto ERROR_OUT;
 		}
 	}
-	else if( TFTP_OP_PUT == op ) {//上传文件
-		fd = open(c_local_path, O_RDONLY );
+	else if( TFTP_OP_PUT == req_pkg->op ) {//上传文件
+		fd = open(req_pkg->local, O_RDONLY );
 		if( fd < 0 ) {
 			loge("%s:%s",__func__, strerror("open"));
 			error_message_handler("Open fail");
@@ -138,32 +139,26 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 		}
 		req.pl_size = OP_PUT_BLKSIZE;
 		ack.pl_size = OP_PUT_BLKSIZE;
-		reqlen=fill_request( &req, WRQ, c_remote_path, "octet");
+		reqlen=fill_request( &req, WRQ, req_pkg->remote, "octet");
 
-		//for( i=1; i<=3; i++ ) {
-			ret = send_request(sockfd, &server, &req, reqlen); //发送请求
-			if( ret < 0 ){
-				error_message_handler("Send request timeout");
+		ret = send_request(sockfd, &server, &req, reqlen); //发送请求
+		if( ret < 0 ){
+			error_message_handler("Send request timeout");
+			goto ERROR_OUT;
+		}
+
+		addrlen = sizeof(sender);
+		recvfrom(sockfd, &ack.tftp, sizeof(ack.tftp),0,(SAP)&sender,&addrlen);
+		if( sender.sin_addr.s_addr == server.sin_addr.s_addr ){
+			if(( ntohs(ack.tftp.opcode) == ACK  &&  0 == ntohs(ack.tftp.be.block)) || ntohs(ack.tftp.opcode) == OACK ){
+				logi("ntohs(ack.tftp.opcode)=%d", ntohs(ack.tftp.opcode));
+				//break;   //收到0号确认，服务器启用新端口，新地址放在sender
+			}
+			if( ntohs(ack.tftp.opcode) == ERROR ) {
+				loge("ERROR code %d: %s\n", ntohs(ack.tftp.be.error), ack.tftp.data);
 				goto ERROR_OUT;
 			}
-
-			addrlen = sizeof(sender);
-			recvfrom(sockfd, &ack.tftp, sizeof(ack.tftp),0,(SAP)&sender,&addrlen);
-			if( sender.sin_addr.s_addr == server.sin_addr.s_addr ){
-				if(( ntohs(ack.tftp.opcode) == ACK  &&  0 == ntohs(ack.tftp.be.block)) || ntohs(ack.tftp.opcode) == OACK ){
-					logi("ntohs(ack.tftp.opcode)=%d", ntohs(ack.tftp.opcode));
-					//break;   //收到0号确认，服务器启用新端口，新地址放在sender
-				}
-				if( ntohs(ack.tftp.opcode) == ERROR ) {
-					loge("ERROR code %d: %s\n", ntohs(ack.tftp.be.error), ack.tftp.data);
-					goto ERROR_OUT;
-				}
-			}
-		/*	if( 3 == i ){
-				loge("%s: i =%d\n",__func__, i);
-				goto ERROR_OUT;
-			}
-		}*/
+		}
 		ret = send_file(sockfd, fd, &sender, req.pl_size);
 		if( 0 != ret ){
 			loge("%s: send_file =%d\n",__func__, ret);
@@ -172,24 +167,57 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 		}
 	} else{
 		error_message_handler("No the operation exist");
-		return JNI_FALSE;
+		return ;
 	}
-
-	close(fd);
-	close(sockfd);
-	(*env)->ReleaseStringUTFChars(env, remote_file_path, c_remote_path);
-	(*env)->ReleaseStringUTFChars(env, local_file_path, c_local_path);
-	return JNI_TRUE;
 
 ERROR_OUT:
 	if( sockfd > 0 )
 		close(sockfd);
 	if ( fd > 0 )
 		close(fd);
-	(*env)->ReleaseStringUTFChars(env, remote_file_path, c_remote_path);
-	(*env)->ReleaseStringUTFChars(env, local_file_path, c_local_path);
-	loge("Error: exit!");
-	return JNI_FALSE;
+	// Free memory.
+	if(req_pkg->local){
+		free(req_pkg->local);
+		loge("Free local");
+	}
+	if(req_pkg->remote){
+		free(req_pkg->remote);
+	}
+	logd("Server thread exiting");
+	pthread_exit(NULL);
+}
+
+static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring remote_file_path, jstring local_file_path){
+	logd("%s", __func__);
+	req_pkg_t *req_pkg;
+	pthread_t tid;
+	req_pkg = (req_pkg_t *)malloc(sizeof(req_pkg_t));
+	if((req_pkg = (req_pkg_t *)malloc(sizeof(req_pkg_t))) == NULL){
+		loge("%s: %d: Memory allocation failed", __FILE__, __LINE__);
+		return JNI_FALSE;
+	}
+	if((req_pkg->local = malloc(128)) == NULL){
+		loge("%s: %d: Memory allocation failed", __FILE__, __LINE__);
+		return JNI_FALSE;
+	}
+	if((req_pkg->remote = malloc(128)) == NULL){
+		loge("%s: %d: Memory allocation failed", __FILE__, __LINE__);
+		return JNI_FALSE;
+	}
+
+   req_pkg->op = op;
+   req_pkg->remote = (*env)->GetStringUTFChars(env, remote_file_path, NULL);
+   req_pkg->local = (*env)->GetStringUTFChars(env, local_file_path, NULL);
+   /* Start a new server thread. */
+   if (pthread_create(&tid, NULL, tftp_request_runnable, (void *)req_pkg) != 0) {
+	   loge("Failed to start new thread");
+	   free(req_pkg);
+	   return JNI_FALSE;
+	}
+   //logi("ip=%s, op=%d, c_remote_path=%s, c_local_path=%s, tid=%d", client.dst_ip, op, req_pkg->remote, req_pkg->local, tid);
+   (*env)->DeleteLocalRef(env, remote_file_path);
+   (*env)->DeleteLocalRef(env, local_file_path);
+	return JNI_TRUE;
 }
 
 static void jni_native_init(JNIEnv *env, jobject thiz, jstring ip){

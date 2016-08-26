@@ -34,16 +34,22 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 	struct pollfd fds[1] = {0} ;
 	struct sockaddr_in sender = {0};
 	int addrlen = sizeof(sender);
-	int total = 0;
+	int times = 0;
+	int written = 0;
 
 	fds[0].fd = sockfd;
 	fds[0].events = POLLIN | POLLERR;
 	while(1) {
 		pollret = poll(fds, 1, TIMEOUT*1000);
 		if( pollret > 0 ){//success
+			times = 0;
 			//logi("%s:success\n", __func__);
 		} else if(pollret == 0){ //timeout
-			logi("%s:time out\n", __func__);
+			if(times >= 3){
+				logi("%s:time out, times=%d\n", __func__);
+				return -1;
+			}
+			times += 1;
 		} else {
 			loge("%s:%s\n", __func__, strerror(errno));
 			return -1;
@@ -70,12 +76,11 @@ int recv_file( int sockfd, int fd, struct sockaddr_in * peer, const int plsize) 
 					continue;
 				} else if (ntohs(buf.be.block) == next) {
 					send_ack(sockfd, &sender, next);  //发送确认
-					int written = write(fd, buf.data, ret - 4);      //写入磁盘
-					total += written;
+					written += write(fd, buf.data, ret - 4);      //写入磁盘
 					logi("data=%d, written=%d, next=%d\n", (ret - 4), written, next);
 					next++;
 					if (ret - 4 < plsize){   //传输完成
-						logi("Transfer over! total=%d\n", total);
+						logi("Transfer over!");
 						return 0;
 					}
 				}

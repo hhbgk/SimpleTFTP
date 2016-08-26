@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "common.h"
 
@@ -21,5 +22,11 @@ typedef struct{
 	int sockfd;
 	char dst_ip[32];
 }client_t;
+
+typedef struct{
+	int op;
+	char *remote;
+	char *local;
+}req_pkg_t;
 
 #endif //SIMPLETFTP_TFTP_API_JNI_H
