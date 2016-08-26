@@ -88,7 +88,7 @@ void *tftp_request_runnable(void *arg){
 	struct sockaddr_in sender = {0};
 	int addrlen = sizeof(sender);
 
-	logi("ip=%s, op=%d, c_remote_path=%s, c_local_path=%s", client.dst_ip, req_pkg->op, req_pkg->remote, req_pkg->local);
+	//logi("ip=%s, op=%d, c_remote_path=%s, c_local_path=%s", client.dst_ip, req_pkg->op, req_pkg->remote, req_pkg->local);
 	// Detach ourself. That way the main thread does not have to wait for us with pthread_join.
 	pthread_detach(pthread_self());
 
@@ -98,14 +98,14 @@ void *tftp_request_runnable(void *arg){
 	server.sin_addr.s_addr = inet_addr(client.dst_ip);
 	if( INADDR_NONE == server.sin_addr.s_addr) {
 		error_message_handler("IP addr invalid");
-		return NULL;
+		goto eixt_thread;
 	}
 	//创建套接字
 	sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if( sockfd < 0 ) {
 		loge("%s:%s",__func__, strerror("socket"));
 		error_message_handler("Create socket fail");
-		return NULL;
+		goto eixt_thread;
 	}
 
 	if( TFTP_OP_GET == req_pkg->op ){  //下载文件，覆盖现有文件
@@ -167,7 +167,7 @@ void *tftp_request_runnable(void *arg){
 		}
 	} else{
 		error_message_handler("No the operation exist");
-		return ;
+		goto eixt_thread;
 	}
 
 ERROR_OUT:
@@ -183,6 +183,7 @@ ERROR_OUT:
 	if(req_pkg->remote){
 		free(req_pkg->remote);
 	}
+eixt_thread:
 	logd("Server thread exiting");
 	pthread_exit(NULL);
 }
