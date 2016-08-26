@@ -18,10 +18,14 @@ static jmethodID on_error_method_id;
 static void error_message_handler(const char *msg){
 	logd("%s:%s", __func__, msg);
 	JNIEnv *env = NULL;
-	(*g_jvm)->GetEnv(g_jvm, (void**)&env, JNI_VERSION_1_4);
+
+	(*g_jvm)->AttachCurrentThread(g_jvm, &env, NULL);
+	assert(env != NULL);
+
 	jstring jmsg = (*env)->NewStringUTF(env, msg);
 	(*env)->CallVoidMethod(env, g_obj, on_error_method_id, jmsg);
 	(*env)->ReleaseStringUTFChars(env, jmsg, msg);
+	(*g_jvm)->DetachCurrentThread(g_jvm);
 }
 /*
  * 填充tftp_t结构体，以便发送读写请求
@@ -151,7 +155,7 @@ void *tftp_request_runnable(void *arg){
 		recvfrom(sockfd, &ack.tftp, sizeof(ack.tftp),0,(SAP)&sender,&addrlen);
 		if( sender.sin_addr.s_addr == server.sin_addr.s_addr ){
 			if(( ntohs(ack.tftp.opcode) == ACK  &&  0 == ntohs(ack.tftp.be.block)) || ntohs(ack.tftp.opcode) == OACK ){
-				logi("ntohs(ack.tftp.opcode)=%d", ntohs(ack.tftp.opcode));
+				//logi("ntohs(ack.tftp.opcode)=%d", ntohs(ack.tftp.opcode));
 				//break;   //收到0号确认，服务器启用新端口，新地址放在sender
 			}
 			if( ntohs(ack.tftp.opcode) == ERROR ) {
@@ -178,7 +182,6 @@ ERROR_OUT:
 	// Free memory.
 	if(req_pkg->local){
 		free(req_pkg->local);
-		loge("Free local");
 	}
 	if(req_pkg->remote){
 		free(req_pkg->remote);
