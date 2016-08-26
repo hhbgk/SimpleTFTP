@@ -4,6 +4,7 @@ A simple TFTP client for Android application, which base on TFTP [RFC1350](https
 #Test
 1.The corresponding server for test is [AFTP](https://github.com/seveas/atftp).
 
+2.Or setup tftpd-hpa on Ubuntu, like [Ubuntu下配置tftp服务和NFS服务](http://www.cnblogs.com/shenhaocn/archive/2011/03/13/1983042.html)
 #Thanks
 1.[Linux下tftp协议实现（服务器端、客户端）](http://blog.csdn.net/konga/article/details/9132683).
 
