@@ -33,14 +33,14 @@ public class TftpClient {
                     switch (msg.arg1){
                         case TFTP_OP_GET:
                             Log.i(tag, "Get over");
-                            if (mOnFileCompleteListener != null){
-                                mOnFileCompleteListener.onDownload();
+                            if (mOnTftpClientListener != null){
+                                mOnTftpClientListener.onDownloadCompleted();
                             }
                             break;
                         case TFTP_OP_PUT:
                             Log.i(tag, "Put over");
-                            if (mOnFileCompleteListener != null){
-                                mOnFileCompleteListener.onUpload();
+                            if (mOnTftpClientListener != null){
+                                mOnTftpClientListener.onUploadCompleted();
                             }
                             break;
                     }
@@ -76,22 +76,14 @@ public class TftpClient {
     }
 
     public interface OnTftpClientListener{
+        void onDownloadCompleted();
+        void onUploadCompleted();
         void onError(String message);
     }
     private OnTftpClientListener mOnTftpClientListener;
 
     public void setOnTftpClientListener(OnTftpClientListener listener){
         mOnTftpClientListener = listener;
-    }
-
-    public interface OnFileCompleteListener{
-        void onDownload();
-        void onUpload();
-    }
-    private OnFileCompleteListener mOnFileCompleteListener;
-
-    public void setOnFileCompleteListener(OnFileCompleteListener listener){
-        mOnFileCompleteListener = listener;
     }
 
     public boolean download(String remoteFilePath, String localFilePath){

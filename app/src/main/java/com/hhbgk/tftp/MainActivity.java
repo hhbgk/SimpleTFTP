@@ -36,6 +36,16 @@ public class MainActivity extends Activity {
 
         mTftpClient.setOnTftpClientListener(new TftpClient.OnTftpClientListener() {
             @Override
+            public void onDownloadCompleted() {
+
+            }
+
+            @Override
+            public void onUploadCompleted() {
+
+            }
+
+            @Override
             public void onError(String message) {
                 Log.e(tag, "Error:"+message);
                 Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();

@@ -121,8 +121,77 @@ void *tftp_request_runnable(void *arg){
 		error_message_handler("Create socket fail");
 		goto eixt_thread;
 	}
+	switch(req_pkg->op){
+	case TFTP_OP_GET:
+		{
+			fd = open(req_pkg->local, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+			if( fd < 0 ) {
+				loge("%s:%s",__func__, strerror("open"));
+				error_message_handler("Open fail");
+				goto ERROR_OUT;
+			}
+			req.pl_size = OP_GET_BLKSIZE;
+			//reqlen = fill_request( &req, RRQ, req_pkg->remote, "octet" );
+			reqlen = fill_request( &req, req_pkg->op, req_pkg->remote, "octet" );
 
-	if( TFTP_OP_GET == req_pkg->op ){  //下载文件，覆盖现有文件
+			ret = send_request(sockfd, &server, &req, reqlen); //发送请求
+			if( ret < 0 ){
+				error_message_handler("Send request timeout");
+				goto ERROR_OUT;
+			}
+
+			ret = recv_file(sockfd, fd, &server, req.pl_size, on_file_transfer_complete); //接收文件
+			if( 0 != ret ) {
+				error_message_handler("Receive request timeout");
+				goto ERROR_OUT;
+			}
+		}
+		break;
+	case TFTP_OP_PUT:
+		{
+			fd = open(req_pkg->local, O_RDONLY );
+			if( fd < 0 ) {
+				loge("%s:%s",__func__, strerror("open"));
+				error_message_handler("Open fail");
+				goto ERROR_OUT;
+			}
+			req.pl_size = OP_PUT_BLKSIZE;
+			ack.pl_size = OP_PUT_BLKSIZE;
+			reqlen=fill_request( &req, WRQ, req_pkg->remote, "octet");
+
+			ret = send_request(sockfd, &server, &req, reqlen); //发送请求
+			if( ret < 0 ){
+				error_message_handler("Send request timeout");
+				goto ERROR_OUT;
+			}
+
+			addrlen = sizeof(sender);
+			recvfrom(sockfd, &ack.tftp, sizeof(ack.tftp),0,(SAP)&sender,&addrlen);
+			if( sender.sin_addr.s_addr == server.sin_addr.s_addr ){
+				if(( ntohs(ack.tftp.opcode) == ACK  &&  0 == ntohs(ack.tftp.be.block)) || ntohs(ack.tftp.opcode) == OACK ){
+					//logi("ntohs(ack.tftp.opcode)=%d", ntohs(ack.tftp.opcode));
+					//break;   //收到0号确认，服务器启用新端口，新地址放在sender
+				}
+				if( ntohs(ack.tftp.opcode) == ERROR ) {
+					loge("ERROR code %d: %s\n", ntohs(ack.tftp.be.error), ack.tftp.data);
+					goto ERROR_OUT;
+				}
+			}
+			ret = send_file(sockfd, fd, &sender, req.pl_size, on_file_transfer_complete);
+			if( 0 != ret ){
+				loge("%s: send_file =%d\n",__func__, ret);
+				error_message_handler("Send file timeout");
+				goto ERROR_OUT;
+			}
+		}
+		break;
+	default:
+		error_message_handler("No the operation exist");
+		goto eixt_thread;
+	}
+	/*
+	if( TFTP_OP_GET == req_pkg->op   //下载文件，覆盖现有文件
+			|| TFTP_OP_THUMBNAIL == req_pkg->op){
 		fd = open(req_pkg->local, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 		if( fd < 0 ) {
 			loge("%s:%s",__func__, strerror("open"));
@@ -130,7 +199,8 @@ void *tftp_request_runnable(void *arg){
 			goto ERROR_OUT;
 		}
 		req.pl_size = OP_GET_BLKSIZE;
-		reqlen = fill_request( &req, RRQ, req_pkg->remote, "octet" );
+		//reqlen = fill_request( &req, RRQ, req_pkg->remote, "octet" );
+		reqlen = fill_request( &req, req_pkg->op, req_pkg->remote, "octet" );
 
 		ret = send_request(sockfd, &server, &req, reqlen); //发送请求
 		if( ret < 0 ){
@@ -179,10 +249,10 @@ void *tftp_request_runnable(void *arg){
 			error_message_handler("Send file timeout");
 			goto ERROR_OUT;
 		}
-	} else{
+	}else{
 		error_message_handler("No the operation exist");
 		goto eixt_thread;
-	}
+	}*/
 
 ERROR_OUT:
 	if( sockfd > 0 )
@@ -220,8 +290,17 @@ static jboolean jni_tftp_request(JNIEnv *env, jobject thiz, jint op, jstring rem
 	}
 
    req_pkg->op = op;
-   req_pkg->remote = (*env)->GetStringUTFChars(env, remote_file_path, NULL);
-   req_pkg->local = (*env)->GetStringUTFChars(env, local_file_path, NULL);
+   if(remote_file_path != NULL){
+	   req_pkg->remote = (*env)->GetStringUTFChars(env, remote_file_path, NULL);
+   } else {
+	   req_pkg->remote = NULL;
+   }
+   if(local_file_path != NULL){
+	   req_pkg->local = (*env)->GetStringUTFChars(env, local_file_path, NULL);
+   } else{
+	   req_pkg->local = NULL;
+   }
+
    /* Start a new server thread. */
    if (pthread_create(&tid, NULL, tftp_request_runnable, (void *)req_pkg) != 0) {
 	   loge("Failed to start new thread");
