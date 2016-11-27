@@ -14,7 +14,7 @@
 #include <assert.h>
 #include <pthread.h>
 
-#include "common.h"
+#include "tftp/common.h"
 
 typedef struct{
 	int pl_size;//payload size

@@ -8,7 +8,7 @@ import android.util.Log;
 public class TftpClient {
     private final String tag = getClass().getSimpleName();
     static {
-        System.loadLibrary("jl_tftp");
+        System.loadLibrary("tftp");
     }
 
     private static final int TFTP_OP_GET = 1;
